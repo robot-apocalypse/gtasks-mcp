@@ -33,7 +33,7 @@ Edit `.env`:
 ```bash
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
-GOOGLE_REDIRECT_URI=https://your-host/callback
+GOOGLE_REDIRECT_URI=https://gtasks-mcp.your-tailnet.ts.net/callback
 ENCRYPTION_SECRET=$(openssl rand -base64 32)
 ```
 
@@ -45,14 +45,14 @@ docker compose up -d
 
 ### 4. Authorize
 
-Open `https://your-host/auth` in your browser and complete the Google sign-in. You'll see **"Connected!"** when done.
+Open `https://gtasks-mcp.your-tailnet.ts.net/auth` in your browser and complete the Google sign-in. You'll see **"Connected!"** when done.
 
 ### 5. Add to Claude.ai
 
 Go to **Claude.ai → Settings → Connectors → Add Custom Connector**:
 
 - **Name**: Google Tasks
-- **URL**: `https://your-host/mcp`
+- **URL**: `https://gtasks-mcp.your-tailnet.ts.net/mcp`
 
 Click **Connect**. Your tasks are now available in Claude.
 
@@ -60,13 +60,22 @@ Click **Connect**. Your tasks are now available in Claude.
 
 ## Tailscale Funnel (Home Server)
 
-If self-hosting on a home server (e.g. a machine named `zeno`):
+This project uses a **Tailscale sidecar container** to expose the server over Tailscale Funnel — no `tailscale` CLI needed on the host.
 
-```bash
-tailscale funnel 3000
-```
+The `docker-compose.yml` includes:
+- `tailscale` sidecar — authenticates to your tailnet and runs the serve config
+- `gtasks-mcp` — shares the tailscale container's network via `network_mode: service:tailscale`
+- `watchtower` — auto-updates images nightly
 
-Your server is then reachable at `https://zeno.your-tailnet.ts.net`. Use that domain for `GOOGLE_REDIRECT_URI` and the Claude.ai connector URL.
+**Setup:**
+
+1. Generate a [Tailscale auth key](https://login.tailscale.com/admin/settings/keys) (reusable, no expiry recommended for servers)
+2. Add to `.env`: `TS_AUTHKEY=tskey-auth-xxxx`
+3. Set `GOOGLE_REDIRECT_URI=https://gtasks-mcp.your-tailnet.ts.net/callback` (the `hostname:` in docker-compose is `gtasks-mcp`)
+4. Enable Funnel for the node in your [Tailscale admin console](https://login.tailscale.com/admin/machines)
+5. `docker compose up -d`
+
+Your server will be reachable at `https://gtasks-mcp.your-tailnet.ts.net`. Use that as the Claude.ai connector URL.
 
 ---
 
