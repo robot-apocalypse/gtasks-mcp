@@ -32,16 +32,17 @@ services:
       - .env
     restart: unless-stopped
 
-  watchtower:
-    image: containrrr/watchtower
-    container_name: gtasks-watchtower
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - WATCHTOWER_CLEANUP=true
-      - WATCHTOWER_SCOPE=gtasks-mcp
-      - WATCHTOWER_SCHEDULE=0 0 3 * * *
-    restart: unless-stopped
+  # watchtower:
+  #   Requires Docker Engine 19.03+ (API 1.40+). Uncomment after upgrading Docker.
+  #   image: containrrr/watchtower
+  #   container_name: gtasks-watchtower
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   environment:
+  #     - WATCHTOWER_CLEANUP=true
+  #     - WATCHTOWER_SCOPE=gtasks-mcp
+  #     - WATCHTOWER_SCHEDULE=0 0 3 * * *
+  #   restart: unless-stopped
 
 volumes:
   tailscale-state:
