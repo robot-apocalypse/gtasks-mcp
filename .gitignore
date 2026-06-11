@@ -1,5 +1,16 @@
 node_modules/
 dist/
-.env
-data/tokens.json
-*.local
+
+# All .env variants — .env.local, .env.production, etc. — except the example
+.env*
+!.env.example
+
+# All data directory contents (tokens, etc.) — keep only .gitkeep
+data/*
+!data/.gitkeep
+
+# Private keys and certs
+*.pem
+*.key
+*.p12
+*.pfx
