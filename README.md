@@ -8,74 +8,125 @@ A self-hosted [Model Context Protocol](https://modelcontextprotocol.io) server f
 - Google OAuth 2.0 authentication
 - Encrypted token storage (AES-256-GCM)
 - HTTP Streamable transport — works with Claude.ai remote connectors
-- Docker + docker-compose for easy self-hosting
-- Tokens survive container restarts via volume mount
+- Tailscale Funnel for secure public exposure — no reverse proxy needed
+- Docker + docker-compose, auto-updates via Watchtower
 
-## Quick Start
+---
 
-### 1. Get Google OAuth Credentials
+## How It Works
+
+The server runs as a Docker container on your home server. A **Tailscale sidecar container** authenticates to your tailnet and exposes the server over [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) — a feature that makes your server reachable at a stable public HTTPS URL (`https://gtasks-mcp.your-tailnet.ts.net`) without opening firewall ports or configuring a reverse proxy.
+
+Claude.ai connects to that URL to call the MCP tools. Port 3000 is never exposed to the host — it's only reachable within the shared Docker network namespace.
+
+---
+
+## Prerequisites
+
+- A home server running Docker
+- A [Tailscale](https://tailscale.com) account (free tier works)
+- A Google account
+
+---
+
+## Setup
+
+### 1. Enable Tailscale Funnel
+
+Funnel must be enabled for your tailnet before it will work.
+
+1. Go to [Tailscale Admin → DNS](https://login.tailscale.com/admin/dns) and enable **HTTPS Certificates**
+2. Go to [Tailscale Admin → Access Controls](https://login.tailscale.com/admin/acls) and add Funnel to your policy:
+
+```json
+"nodeAttrs": [
+  {
+    "target": ["*"],
+    "attr":   ["funnel"]
+  }
+]
+```
+
+### 2. Get a Tailscale Auth Key
+
+Go to [Tailscale Admin → Settings → Keys](https://login.tailscale.com/admin/settings/keys) and generate an auth key.
+
+- Check **Reusable** and set no expiry (recommended for a server that may restart)
+- Copy the key — you'll add it to `.env` as `TS_AUTHKEY`
+
+The Tailscale container will authenticate with this key and register as `gtasks-mcp` in your tailnet (set by `hostname:` in `docker-compose.yml`). Your server will then be reachable at `https://gtasks-mcp.your-tailnet.ts.net`.
+
+### 3. Get Google OAuth Credentials
 
 1. Open [Google Cloud Console](https://console.cloud.google.com) and create a project
 2. Enable the **Tasks API** (APIs & Services → Enable APIs → search "Tasks API")
 3. Go to **APIs & Services → Credentials → Create Credentials → OAuth 2.0 Client ID**
 4. Application type: **Web application**
-5. Authorized redirect URI: `https://your-host/callback`
+5. Authorized redirect URI: `https://gtasks-mcp.your-tailnet.ts.net/callback`
 6. Copy your **Client ID** and **Client Secret**
 
-### 2. Configure
+### 4. Configure
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env`:
+Edit `.env` — replace every placeholder:
 
 ```bash
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
 GOOGLE_REDIRECT_URI=https://gtasks-mcp.your-tailnet.ts.net/callback
 ENCRYPTION_SECRET=$(openssl rand -base64 32)
+TS_AUTHKEY=tskey-auth-xxxx
 ```
 
-### 3. Run
+### 5. Run
 
 ```bash
 docker compose up -d
 ```
 
-### 4. Authorize
+The Tailscale container starts, authenticates to your tailnet, and begins serving. The `gtasks-mcp` container starts and is reachable only through the Tailscale sidecar.
+
+Check that it's up:
+
+```bash
+docker compose logs tailscale   # should show "Connected."
+docker compose logs gtasks-mcp  # should show the port it's listening on
+```
+
+### 6. Authorize with Google
 
 Open `https://gtasks-mcp.your-tailnet.ts.net/auth` in your browser and complete the Google sign-in. You'll see **"Connected!"** when done.
 
-### 5. Add to Claude.ai
+Your tokens are stored encrypted in `./data/tokens.json` and will survive container restarts.
+
+### 7. Add to Claude.ai
 
 Go to **Claude.ai → Settings → Connectors → Add Custom Connector**:
 
 - **Name**: Google Tasks
 - **URL**: `https://gtasks-mcp.your-tailnet.ts.net/mcp`
 
-Click **Connect**. Your tasks are now available in Claude.
+Click **Connect**. Claude will open the Google OAuth flow and your tasks will be available immediately.
 
 ---
 
-## Tailscale Funnel (Home Server)
+## Tailscale Serve Config
 
-This project uses a **Tailscale sidecar container** to expose the server over Tailscale Funnel — no `tailscale` CLI needed on the host.
+The included `tailscale-serve.json` tells Tailscale to:
+- Terminate HTTPS on port 443 using your tailnet's automatically-provisioned certificate
+- Proxy all requests to `http://127.0.0.1:3000` (the app, via the shared network namespace)
+- Enable Funnel so the URL is reachable from the public internet (not just your tailnet)
 
-The `docker-compose.yml` includes:
-- `tailscale` sidecar — authenticates to your tailnet and runs the serve config
-- `gtasks-mcp` — shares the tailscale container's network via `network_mode: service:tailscale`
-- `watchtower` — auto-updates images nightly
+You don't need to modify this file.
 
-**Setup:**
+---
 
-1. Generate a [Tailscale auth key](https://login.tailscale.com/admin/settings/keys) (reusable, no expiry recommended for servers)
-2. Add to `.env`: `TS_AUTHKEY=tskey-auth-xxxx`
-3. Set `GOOGLE_REDIRECT_URI=https://gtasks-mcp.your-tailnet.ts.net/callback` (the `hostname:` in docker-compose is `gtasks-mcp`)
-4. Enable Funnel for the node in your [Tailscale admin console](https://login.tailscale.com/admin/machines)
-5. `docker compose up -d`
+## Auto-Updates (Watchtower)
 
-Your server will be reachable at `https://gtasks-mcp.your-tailnet.ts.net`. Use that as the Claude.ai connector URL.
+The `watchtower` service in `docker-compose.yml` automatically pulls updated images for `tailscale` and `gtasks-mcp` every night at 3 AM and restarts them if a new version is available. It is scoped to this stack via the `com.centurylinklabs.watchtower.scope=gtasks-mcp` label.
 
 ---
 
@@ -96,9 +147,9 @@ Your server will be reachable at `https://gtasks-mcp.your-tailnet.ts.net`. Use t
 ```bash
 npm install
 cp .env.example .env   # fill in real values
-npm run dev            # starts on port 3000
+npm run dev            # starts on http://localhost:3000
 npm test               # run unit tests
-npm run build          # compile TypeScript
+npm run build          # compile TypeScript to dist/
 ```
 
 ---
@@ -111,6 +162,7 @@ npm run build          # compile TypeScript
 | `GOOGLE_CLIENT_SECRET` | Yes | OAuth 2.0 client secret from GCP |
 | `GOOGLE_REDIRECT_URI` | Yes | Must match GCP console exactly |
 | `ENCRYPTION_SECRET` | Yes | Min 32 chars — used for AES-256-GCM token encryption |
+| `TS_AUTHKEY` | Yes | Tailscale auth key for the sidecar container |
 | `PORT` | No | HTTP port (default: `3000`) |
 
 ---
@@ -124,7 +176,7 @@ GET  /health     → 200 OK
 ALL  /mcp        → MCP Streamable HTTP endpoint (requires auth)
 ```
 
-Tokens are stored encrypted in `data/tokens.json` on a Docker volume. On each request, tokens are loaded and refreshed automatically if expired.
+Tokens are stored encrypted in `data/tokens.json` on a bind-mounted volume. On each request they are loaded and refreshed automatically if expired — you should never need to re-authorize unless you explicitly revoke access in your Google account.
 
 ---
 
