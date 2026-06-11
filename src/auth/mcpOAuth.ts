@@ -73,8 +73,11 @@ export function generateAccessToken(): string {
 }
 
 export async function saveAccessToken(token: string): Promise<void> {
-  await fs.mkdir(path.dirname(ACCESS_TOKEN_PATH), { recursive: true })
-  await fs.writeFile(ACCESS_TOKEN_PATH, token, 'utf8')
+  const dir = path.dirname(ACCESS_TOKEN_PATH)
+  await fs.mkdir(dir, { recursive: true })
+  const tmp = `${ACCESS_TOKEN_PATH}.tmp`
+  await fs.writeFile(tmp, token, 'utf8')
+  await fs.rename(tmp, ACCESS_TOKEN_PATH)
 }
 
 export async function loadAccessToken(): Promise<string | null> {

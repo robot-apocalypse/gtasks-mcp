@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
-import { getTasksClient } from '../google/client.js'
+import { getTasksClient, googleErrorMessage } from '../google/client.js'
 
 export function registerTaskTools(server: McpServer): void {
   server.registerTool(
@@ -16,22 +16,15 @@ export function registerTaskTools(server: McpServer): void {
       }
     },
     async ({ taskListId, showCompleted = false }) => {
-      const tasks = await getTasksClient()
-      const res = await tasks.tasks.list({
-        tasklist: taskListId,
-        showCompleted,
-        showHidden: showCompleted
-      })
-      const items = (res.data.items ?? []).map((t) => ({
-        id: t.id,
-        title: t.title,
-        notes: t.notes,
-        due: t.due,
-        completed: t.completed,
-        status: t.status
-      }))
-      return {
-        content: [{ type: 'text' as const, text: JSON.stringify(items, null, 2) }]
+      try {
+        const tasks = await getTasksClient()
+        const res = await tasks.tasks.list({ tasklist: taskListId, showCompleted, showHidden: showCompleted })
+        const items = (res.data.items ?? []).map((t) => ({
+          id: t.id, title: t.title, notes: t.notes, due: t.due, completed: t.completed, status: t.status
+        }))
+        return { content: [{ type: 'text' as const, text: JSON.stringify(items, null, 2) }] }
+      } catch (err) {
+        return { content: [{ type: 'text' as const, text: googleErrorMessage(err) }], isError: true }
       }
     }
   )
@@ -51,13 +44,12 @@ export function registerTaskTools(server: McpServer): void {
       }
     },
     async ({ taskListId, title, notes, due }) => {
-      const tasks = await getTasksClient()
-      const res = await tasks.tasks.insert({
-        tasklist: taskListId,
-        requestBody: { title, notes, due }
-      })
-      return {
-        content: [{ type: 'text' as const, text: JSON.stringify(res.data, null, 2) }]
+      try {
+        const tasks = await getTasksClient()
+        const res = await tasks.tasks.insert({ tasklist: taskListId, requestBody: { title, notes, due } })
+        return { content: [{ type: 'text' as const, text: JSON.stringify(res.data, null, 2) }] }
+      } catch (err) {
+        return { content: [{ type: 'text' as const, text: googleErrorMessage(err) }], isError: true }
       }
     }
   )
@@ -80,19 +72,17 @@ export function registerTaskTools(server: McpServer): void {
       }
     },
     async ({ taskListId, taskId, title, notes, due, status }) => {
-      const tasks = await getTasksClient()
-      const requestBody: Record<string, string> = {}
-      if (title !== undefined) requestBody.title = title
-      if (notes !== undefined) requestBody.notes = notes
-      if (due !== undefined) requestBody.due = due
-      if (status !== undefined) requestBody.status = status
-      const res = await tasks.tasks.patch({
-        tasklist: taskListId,
-        task: taskId,
-        requestBody
-      })
-      return {
-        content: [{ type: 'text' as const, text: JSON.stringify(res.data, null, 2) }]
+      try {
+        const tasks = await getTasksClient()
+        const requestBody: Record<string, string> = {}
+        if (title !== undefined) requestBody.title = title
+        if (notes !== undefined) requestBody.notes = notes
+        if (due !== undefined) requestBody.due = due
+        if (status !== undefined) requestBody.status = status
+        const res = await tasks.tasks.patch({ tasklist: taskListId, task: taskId, requestBody })
+        return { content: [{ type: 'text' as const, text: JSON.stringify(res.data, null, 2) }] }
+      } catch (err) {
+        return { content: [{ type: 'text' as const, text: googleErrorMessage(err) }], isError: true }
       }
     }
   )
@@ -107,10 +97,12 @@ export function registerTaskTools(server: McpServer): void {
       }
     },
     async ({ taskListId, taskId }) => {
-      const tasks = await getTasksClient()
-      await tasks.tasks.delete({ tasklist: taskListId, task: taskId })
-      return {
-        content: [{ type: 'text' as const, text: `Task ${taskId} deleted.` }]
+      try {
+        const tasks = await getTasksClient()
+        await tasks.tasks.delete({ tasklist: taskListId, task: taskId })
+        return { content: [{ type: 'text' as const, text: `Task ${taskId} deleted.` }] }
+      } catch (err) {
+        return { content: [{ type: 'text' as const, text: googleErrorMessage(err) }], isError: true }
       }
     }
   )

@@ -7,6 +7,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const TOKEN_PATH = path.join(__dirname, '..', '..', 'data', 'tokens.json')
 const ALGORITHM = 'aes-256-gcm'
 
+// Cached so scryptSync (intentionally slow KDF) only runs once per process
+let cachedKey: Buffer | undefined
+
 export interface Tokens {
   access_token: string
   refresh_token: string
@@ -20,11 +23,13 @@ interface StoredTokens {
 }
 
 function getKey(): Buffer {
+  if (cachedKey) return cachedKey
   const secret = process.env.ENCRYPTION_SECRET
   if (!secret || secret.length < 32) {
     throw new Error('ENCRYPTION_SECRET must be at least 32 characters')
   }
-  return crypto.scryptSync(secret, 'gtasks-mcp', 32)
+  cachedKey = crypto.scryptSync(secret, 'gtasks-mcp', 32)
+  return cachedKey
 }
 
 export function encryptTokens(tokens: Tokens): StoredTokens {
@@ -54,8 +59,11 @@ export function decryptTokens(stored: StoredTokens): Tokens {
 }
 
 export async function saveTokens(tokens: Tokens): Promise<void> {
-  await fs.mkdir(path.dirname(TOKEN_PATH), { recursive: true })
-  await fs.writeFile(TOKEN_PATH, JSON.stringify(encryptTokens(tokens), null, 2))
+  const dir = path.dirname(TOKEN_PATH)
+  await fs.mkdir(dir, { recursive: true })
+  const tmp = `${TOKEN_PATH}.tmp`
+  await fs.writeFile(tmp, JSON.stringify(encryptTokens(tokens), null, 2))
+  await fs.rename(tmp, TOKEN_PATH)
 }
 
 export async function loadTokens(): Promise<Tokens | null> {
