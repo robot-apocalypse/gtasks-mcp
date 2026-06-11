@@ -36,8 +36,8 @@ gtasks-mcp/
 │   │   └── storage.ts    # Encrypted token read/write to JSON file
 │   ├── tools/
 │   │   ├── index.ts      # Registers all tools with MCP server
-│   │   ├── taskLists.ts  # list_task_lists
-│   │   └── tasks.ts      # list_tasks, create_task, update_task, delete_task
+│   │   ├── taskLists.ts  # list_task_lists, create_task_list, update_task_list, delete_task_list
+│   │   └── tasks.ts      # list_tasks, create_task, update_task, delete_task, move_task, clear_completed_tasks
 │   ├── google/
 │   │   └── client.ts     # Authenticated Google Tasks API client
 │   └── mcp/
@@ -59,6 +59,21 @@ Returns all task lists for the authenticated user.
 - Params: none
 - Returns: array of `{ id, title, updated }`
 
+### `create_task_list`
+Creates a new task list.
+- Params: `title` (string)
+- Returns: created task list object
+
+### `update_task_list`
+Renames a task list.
+- Params: `taskListId` (string), `title` (string)
+- Returns: updated task list object
+
+### `delete_task_list`
+Permanently deletes a task list and all its tasks.
+- Params: `taskListId` (string)
+- Returns: confirmation
+
 ### `list_tasks`
 Returns tasks in a specific task list.
 - Params: `taskListId` (string), `showCompleted?` (boolean, default false)
@@ -77,6 +92,16 @@ Updates an existing task. Also used to mark complete/incomplete.
 ### `delete_task`
 Deletes a task permanently.
 - Params: `taskListId` (string), `taskId` (string)
+- Returns: confirmation
+
+### `move_task`
+Moves a task to a different position or a different task list.
+- Params: `taskListId` (string), `taskId` (string), `destinationTaskListId?` (string), `previousTaskId?` (string — place after this task; omit for top), `parentTaskId?` (string — make subtask)
+- Returns: updated task object (or newly created task if moved to another list)
+
+### `clear_completed_tasks`
+Permanently deletes all completed tasks from a task list.
+- Params: `taskListId` (string)
 - Returns: confirmation
 
 ## Auth Flow
