@@ -170,13 +170,26 @@ npm run build          # compile TypeScript to dist/
 ## Architecture
 
 ```
+# OAuth 2.0 Authorization Server (for Claude.ai connector registration)
+GET  /.well-known/oauth-authorization-server   → AS metadata (RFC 8414)
+GET  /.well-known/oauth-protected-resource     → Protected resource metadata (RFC 9728)
+GET  /.well-known/oauth-protected-resource/mcp → Same, path-aware variant
+POST /register                                 → Dynamic client registration (RFC 7591)
+GET  /authorize                                → PKCE authorization endpoint
+POST /token                                    → Token endpoint
+
+# Google OAuth (one-time setup to link your Google account)
 GET  /auth       → Redirect to Google OAuth consent screen
 GET  /callback   → Exchange auth code for tokens, encrypt and save
+
+# Server
 GET  /health     → 200 OK
-ALL  /mcp        → MCP Streamable HTTP endpoint (requires auth)
+ALL  /mcp        → MCP Streamable HTTP endpoint (requires Bearer token)
 ```
 
-Tokens are stored encrypted in `data/tokens.json` on a bind-mounted volume. On each request they are loaded and refreshed automatically if expired — you should never need to re-authorize unless you explicitly revoke access in your Google account.
+When you add the connector in Claude.ai, it automatically discovers the OAuth endpoints, registers itself, and walks you through Google sign-in — no manual steps beyond clicking Connect.
+
+Google tokens are stored encrypted in `data/tokens.json` on a bind-mounted volume. They are loaded and refreshed automatically on each request — you should never need to re-authorize unless you explicitly revoke access in your Google account.
 
 ---
 
