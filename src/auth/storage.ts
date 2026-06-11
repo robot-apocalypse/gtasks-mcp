@@ -10,6 +10,8 @@ const ALGORITHM = 'aes-256-gcm'
 // Cached so scryptSync (intentionally slow KDF) only runs once per process
 let cachedKey: Buffer | undefined
 
+export function _resetKeyCache() { cachedKey = undefined }
+
 export interface Tokens {
   access_token: string
   refresh_token: string

@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { encryptTokens, decryptTokens } from './storage.js'
+import { encryptTokens, decryptTokens, _resetKeyCache } from './storage.js'
 
 describe('token storage', () => {
   beforeEach(() => {
+    _resetKeyCache()
     process.env.ENCRYPTION_SECRET = 'test-secret-that-is-at-least-32-chars-long'
   })
 
