@@ -2,12 +2,15 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 import { registerAllTools } from '../tools/index.js'
 
-export function createMcpServer(): McpServer {
+export async function handleMcpRequest(request: Request): Promise<Response> {
   const server = new McpServer({ name: 'gtasks-mcp', version: '1.0.0' })
   registerAllTools(server)
-  return server
-}
 
-export function createTransport(): WebStandardStreamableHTTPServerTransport {
-  return new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined })
+  const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined })
+
+  // Close the server after the transport closes, not before the response is fully streamed
+  transport.onclose = () => { server.close().catch(() => {}) }
+
+  await server.connect(transport)
+  return transport.handleRequest(request)
 }

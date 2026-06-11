@@ -11,11 +11,12 @@ function createClient() {
   )
 }
 
-export function getAuthUrl(): string {
+export function getAuthUrl(state?: string): string {
   return createClient().generateAuthUrl({
     access_type: 'offline',
     scope: SCOPES,
-    prompt: 'consent'
+    prompt: 'consent',
+    ...(state ? { state } : {})
   })
 }
 
