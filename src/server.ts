@@ -9,8 +9,8 @@ import {
   consumePendingRequest,
   generateAuthCode,
   validateAndConsumeCode,
-  generateAccessToken,
-  saveAccessToken,
+  issueTokens,
+  refreshAccessToken,
   validateAccessToken
 } from './auth/mcpOAuth.js'
 
@@ -47,7 +47,7 @@ app.get('/.well-known/oauth-authorization-server', (c) => {
     token_endpoint: `${issuer}/token`,
     registration_endpoint: `${issuer}/register`,
     response_types_supported: ['code'],
-    grant_types_supported: ['authorization_code'],
+    grant_types_supported: ['authorization_code', 'refresh_token'],
     code_challenge_methods_supported: ['S256'],
     token_endpoint_auth_methods_supported: ['none']
   })
@@ -77,7 +77,7 @@ app.post('/register', async (c) => {
       client_secret_expires_at: 0,
       redirect_uris: body.redirect_uris ?? [],
       token_endpoint_auth_method: 'none',
-      grant_types: ['authorization_code'],
+      grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code']
     },
     201
@@ -147,7 +147,19 @@ app.post('/token', async (c) => {
     body = (await c.req.json()) as Record<string, string>
   }
 
-  const { grant_type, code, code_verifier, redirect_uri } = body
+  const { grant_type, code, code_verifier, redirect_uri, refresh_token } = body
+
+  if (grant_type === 'refresh_token') {
+    if (!refresh_token) return c.json({ error: 'invalid_request' }, 400)
+    const refreshed = await refreshAccessToken(refresh_token)
+    if (!refreshed) return c.json({ error: 'invalid_grant' }, 400)
+    return c.json({
+      access_token: refreshed.accessToken,
+      token_type: 'bearer',
+      expires_in: refreshed.expiresIn,
+      refresh_token: refreshed.refreshToken
+    })
+  }
 
   if (grant_type !== 'authorization_code') {
     return c.json({ error: 'unsupported_grant_type' }, 400)
@@ -159,13 +171,13 @@ app.post('/token', async (c) => {
     return c.json({ error: 'invalid_grant' }, 400)
   }
 
-  const token = generateAccessToken()
-  await saveAccessToken(token)
+  const issued = await issueTokens()
 
   return c.json({
-    access_token: token,
+    access_token: issued.accessToken,
     token_type: 'bearer',
-    expires_in: 31536000
+    expires_in: issued.expiresIn,
+    refresh_token: issued.refreshToken
   })
 })
 

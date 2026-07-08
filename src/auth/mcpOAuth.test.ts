@@ -1,10 +1,16 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import fs from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import {
   storePendingRequest,
   consumePendingRequest,
   generateAuthCode,
   validateAndConsumeCode,
-  generateAccessToken
+  issueTokens,
+  refreshAccessToken,
+  validateAccessToken,
+  _resetStore
 } from './mcpOAuth.js'
 
 const baseRequest = {
@@ -87,12 +93,68 @@ describe('authorization codes', () => {
   })
 })
 
-describe('access token generation', () => {
-  it('produces a non-empty string', () => {
-    expect(generateAccessToken().length).toBeGreaterThan(0)
+describe('access + refresh tokens', () => {
+  let tmpDir: string
+
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mcp-tokens-'))
+    process.env.MCP_TOKENS_PATH = path.join(tmpDir, 'mcp-tokens.json')
+    _resetStore()
   })
 
-  it('produces unique tokens', () => {
-    expect(generateAccessToken()).not.toBe(generateAccessToken())
+  afterEach(async () => {
+    delete process.env.MCP_TOKENS_PATH
+    _resetStore()
+    await fs.rm(tmpDir, { recursive: true, force: true })
+  })
+
+  it('issues an access token that validates', async () => {
+    const { accessToken } = await issueTokens()
+    expect(await validateAccessToken(accessToken)).toBe(true)
+  })
+
+  it('rejects an unknown access token', async () => {
+    expect(await validateAccessToken('not-a-real-token')).toBe(false)
+  })
+
+  it('issuing a second token does not invalidate the first (multi-device)', async () => {
+    const { accessToken: first } = await issueTokens()
+    const { accessToken: second } = await issueTokens()
+    expect(await validateAccessToken(first)).toBe(true)
+    expect(await validateAccessToken(second)).toBe(true)
+  })
+
+  it('refresh token mints a new valid access token', async () => {
+    const { refreshToken } = await issueTokens()
+    const refreshed = await refreshAccessToken(refreshToken)
+    expect(refreshed).not.toBeNull()
+    expect(await validateAccessToken(refreshed!.accessToken)).toBe(true)
+  })
+
+  it('same refresh token keeps working (non-rotating)', async () => {
+    const { refreshToken } = await issueTokens()
+    const a = await refreshAccessToken(refreshToken)
+    const b = await refreshAccessToken(refreshToken)
+    expect(a).not.toBeNull()
+    expect(b).not.toBeNull()
+    expect(b!.refreshToken).toBe(refreshToken)
+  })
+
+  it('rejects an unknown refresh token', async () => {
+    expect(await refreshAccessToken('not-a-real-refresh-token')).toBeNull()
+  })
+
+  it('rejects an expired access token', async () => {
+    vi.useFakeTimers()
+    const { accessToken } = await issueTokens()
+    vi.advanceTimersByTime(61 * 60 * 1000) // past 1-hour TTL
+    expect(await validateAccessToken(accessToken)).toBe(false)
+    vi.useRealTimers()
+  })
+
+  it('tokens survive a store reload from disk', async () => {
+    const { accessToken } = await issueTokens()
+    _resetStore() // forces a fresh read from the JSON file
+    expect(await validateAccessToken(accessToken)).toBe(true)
   })
 })

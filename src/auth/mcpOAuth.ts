@@ -4,7 +4,15 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const ACCESS_TOKEN_PATH = path.join(__dirname, '..', '..', 'data', 'mcp-access-token.txt')
+const DEFAULT_TOKENS_PATH = path.join(__dirname, '..', '..', 'data', 'mcp-tokens.json')
+
+// Access tokens are short-lived; Claude silently refreshes them with the
+// long-lived refresh token, so the user never has to re-run the OAuth flow.
+const ACCESS_TOKEN_TTL_MS = 60 * 60 * 1000 // 1 hour
+
+function tokensPath(): string {
+  return process.env.MCP_TOKENS_PATH ?? DEFAULT_TOKENS_PATH
+}
 
 interface PendingRequest {
   clientId: string
@@ -68,32 +76,90 @@ export function validateAndConsumeCode(code: string, codeVerifier: string, redir
   }
 }
 
-export function generateAccessToken(): string {
-  return crypto.randomBytes(32).toString('base64url')
+// Multi-token store: many access tokens (one per device/session) and their
+// refresh tokens coexist, so connecting a new client never invalidates others.
+interface TokenStore {
+  accessTokens: Record<string, { expiresAt: number }>
+  refreshTokens: Record<string, { createdAt: number }>
 }
 
-export async function saveAccessToken(token: string): Promise<void> {
-  const dir = path.dirname(ACCESS_TOKEN_PATH)
-  await fs.mkdir(dir, { recursive: true })
-  const tmp = `${ACCESS_TOKEN_PATH}.tmp`
-  await fs.writeFile(tmp, token, 'utf8')
-  await fs.rename(tmp, ACCESS_TOKEN_PATH)
+let store: TokenStore | null = null
+
+export function _resetStore(): void {
+  store = null
 }
 
-export async function loadAccessToken(): Promise<string | null> {
+async function loadStore(): Promise<TokenStore> {
+  if (store) return store
   try {
-    return (await fs.readFile(ACCESS_TOKEN_PATH, 'utf8')).trim()
+    const raw = await fs.readFile(tokensPath(), 'utf8')
+    const parsed = JSON.parse(raw) as Partial<TokenStore>
+    store = {
+      accessTokens: parsed.accessTokens ?? {},
+      refreshTokens: parsed.refreshTokens ?? {}
+    }
   } catch {
-    return null
+    store = { accessTokens: {}, refreshTokens: {} }
   }
+  return store
+}
+
+async function persist(s: TokenStore): Promise<void> {
+  const p = tokensPath()
+  await fs.mkdir(path.dirname(p), { recursive: true })
+  const tmp = `${p}.tmp`
+  await fs.writeFile(tmp, JSON.stringify(s, null, 2), 'utf8')
+  await fs.rename(tmp, p)
+}
+
+function pruneExpired(s: TokenStore): void {
+  const now = Date.now()
+  for (const [token, meta] of Object.entries(s.accessTokens)) {
+    if (meta.expiresAt < now) delete s.accessTokens[token]
+  }
+}
+
+export interface IssuedTokens {
+  accessToken: string
+  refreshToken: string
+  expiresIn: number
+}
+
+async function mintAccessToken(s: TokenStore): Promise<string> {
+  pruneExpired(s)
+  const accessToken = crypto.randomBytes(32).toString('base64url')
+  s.accessTokens[accessToken] = { expiresAt: Date.now() + ACCESS_TOKEN_TTL_MS }
+  return accessToken
+}
+
+// Issued after a successful authorization_code exchange.
+export async function issueTokens(): Promise<IssuedTokens> {
+  const s = await loadStore()
+  const accessToken = await mintAccessToken(s)
+  const refreshToken = crypto.randomBytes(32).toString('base64url')
+  s.refreshTokens[refreshToken] = { createdAt: Date.now() }
+  await persist(s)
+  return { accessToken, refreshToken, expiresIn: Math.floor(ACCESS_TOKEN_TTL_MS / 1000) }
+}
+
+// Exchanges a refresh token for a fresh access token. The refresh token is
+// long-lived and non-rotating, so the same one keeps working indefinitely.
+export async function refreshAccessToken(refreshToken: string): Promise<IssuedTokens | null> {
+  const s = await loadStore()
+  if (!s.refreshTokens[refreshToken]) return null
+  const accessToken = await mintAccessToken(s)
+  await persist(s)
+  return { accessToken, refreshToken, expiresIn: Math.floor(ACCESS_TOKEN_TTL_MS / 1000) }
 }
 
 export async function validateAccessToken(token: string): Promise<boolean> {
-  const stored = await loadAccessToken()
-  if (!stored) return false
-  try {
-    return crypto.timingSafeEqual(Buffer.from(token), Buffer.from(stored))
-  } catch {
+  const s = await loadStore()
+  const meta = s.accessTokens[token]
+  if (!meta) return false
+  if (meta.expiresAt < Date.now()) {
+    delete s.accessTokens[token]
+    await persist(s)
     return false
   }
+  return true
 }
