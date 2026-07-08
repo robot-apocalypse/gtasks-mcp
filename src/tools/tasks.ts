@@ -106,4 +106,74 @@ export function registerTaskTools(server: McpServer): void {
       }
     }
   )
+
+  server.registerTool(
+    'move_task',
+    {
+      description: 'Moves a task to a different position within its list, or to a different task list',
+      inputSchema: {
+        taskListId: z.string().describe('The ID of the task list containing the task'),
+        taskId: z.string().describe('The ID of the task to move'),
+        destinationTaskListId: z
+          .string()
+          .optional()
+          .describe('Move to a different task list (omit to stay in same list)'),
+        previousTaskId: z
+          .string()
+          .optional()
+          .describe('Place after this task ID; omit to move to the top of the list'),
+        parentTaskId: z
+          .string()
+          .optional()
+          .describe('Make this task a subtask of the given parent task ID')
+      }
+    },
+    async ({ taskListId, taskId, destinationTaskListId, previousTaskId, parentTaskId }) => {
+      try {
+        const tasks = await getTasksClient()
+        if (destinationTaskListId && destinationTaskListId !== taskListId) {
+          const getRes = await tasks.tasks.get({ tasklist: taskListId, task: taskId })
+          const insertRes = await tasks.tasks.insert({
+            tasklist: destinationTaskListId,
+            requestBody: {
+              title: getRes.data.title,
+              notes: getRes.data.notes,
+              due: getRes.data.due,
+              status: getRes.data.status
+            }
+          })
+          await tasks.tasks.delete({ tasklist: taskListId, task: taskId })
+          return { content: [{ type: 'text' as const, text: JSON.stringify(insertRes.data, null, 2) }] }
+        }
+        const res = await tasks.tasks.move({
+          tasklist: taskListId,
+          task: taskId,
+          ...(previousTaskId ? { previous: previousTaskId } : {}),
+          ...(parentTaskId ? { parent: parentTaskId } : {})
+        })
+        return { content: [{ type: 'text' as const, text: JSON.stringify(res.data, null, 2) }] }
+      } catch (err) {
+        return { content: [{ type: 'text' as const, text: googleErrorMessage(err) }], isError: true }
+      }
+    }
+  )
+
+  server.registerTool(
+    'clear_completed_tasks',
+    {
+      description: 'Permanently deletes all completed tasks from a task list',
+      inputSchema: {
+        taskListId: z.string().describe('The ID of the task list to clear')
+      }
+    },
+    async ({ taskListId }) => {
+      try {
+        const tasks = await getTasksClient()
+        await tasks.tasks.clear({ tasklist: taskListId })
+        return { content: [{ type: 'text' as const, text: 'Completed tasks cleared.' }] }
+      } catch (err) {
+        return { content: [{ type: 'text' as const, text: googleErrorMessage(err) }], isError: true }
+      }
+    }
+  )
 }
