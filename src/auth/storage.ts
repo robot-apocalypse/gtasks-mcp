@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { atomicWrite } from './atomicWrite.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const TOKEN_PATH = path.join(__dirname, '..', '..', 'data', 'tokens.json')
@@ -61,11 +62,7 @@ export function decryptTokens(stored: StoredTokens): Tokens {
 }
 
 export async function saveTokens(tokens: Tokens): Promise<void> {
-  const dir = path.dirname(TOKEN_PATH)
-  await fs.mkdir(dir, { recursive: true })
-  const tmp = `${TOKEN_PATH}.tmp`
-  await fs.writeFile(tmp, JSON.stringify(encryptTokens(tokens), null, 2))
-  await fs.rename(tmp, TOKEN_PATH)
+  await atomicWrite(TOKEN_PATH, JSON.stringify(encryptTokens(tokens), null, 2))
 }
 
 export async function loadTokens(): Promise<Tokens | null> {

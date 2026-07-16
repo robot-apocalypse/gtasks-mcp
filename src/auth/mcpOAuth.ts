@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { atomicWrite } from './atomicWrite.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DEFAULT_TOKENS_PATH = path.join(__dirname, '..', '..', 'data', 'mcp-tokens.json')
@@ -105,11 +106,7 @@ async function loadStore(): Promise<TokenStore> {
 }
 
 async function persist(s: TokenStore): Promise<void> {
-  const p = tokensPath()
-  await fs.mkdir(path.dirname(p), { recursive: true })
-  const tmp = `${p}.tmp`
-  await fs.writeFile(tmp, JSON.stringify(s, null, 2), 'utf8')
-  await fs.rename(tmp, p)
+  await atomicWrite(tokensPath(), JSON.stringify(s, null, 2))
 }
 
 function pruneExpired(s: TokenStore): void {
