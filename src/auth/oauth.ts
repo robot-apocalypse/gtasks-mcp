@@ -1,7 +1,27 @@
 import { google } from 'googleapis'
 import { saveTokens, loadTokens, type Tokens } from './storage.js'
 
-const SCOPES = ['https://www.googleapis.com/auth/tasks']
+// openid + userinfo.email are required to identify *who* signed in. Without
+// them Google returns no id_token and any Google account can link this server.
+const SCOPES = [
+  'openid',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/tasks'
+]
+
+/** Emails permitted to link this server, from ALLOWED_GOOGLE_EMAILS (comma-separated). */
+export function allowedEmails(): string[] {
+  return (process.env.ALLOWED_GOOGLE_EMAILS ?? '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean)
+}
+
+/** Fails closed: an unset or empty allowlist permits nobody. */
+export function isAllowedEmail(email: string | undefined | null): boolean {
+  if (!email) return false
+  return allowedEmails().includes(email.toLowerCase())
+}
 
 function createClient() {
   return new google.auth.OAuth2(
@@ -23,6 +43,22 @@ export function getAuthUrl(state?: string): string {
 export async function handleCallback(code: string): Promise<void> {
   const client = createClient()
   const { tokens } = await client.getToken(code)
+
+  // Authorization gate: Google authenticates anyone with an account, so verify
+  // the identity before storing credentials. Runs before saveTokens so a
+  // rejected sign-in cannot overwrite the linked account's tokens.
+  if (!tokens.id_token) {
+    throw new Error('No id_token returned; cannot verify the signing-in account')
+  }
+  const ticket = await client.verifyIdToken({
+    idToken: tokens.id_token,
+    audience: process.env.GOOGLE_CLIENT_ID
+  })
+  const payload = ticket.getPayload()
+  if (!payload?.email_verified || !isAllowedEmail(payload.email)) {
+    throw new Error(`Account not permitted: ${payload?.email ?? 'unknown'}`)
+  }
+
   await saveTokens({
     access_token: tokens.access_token!,
     refresh_token: tokens.refresh_token!,

@@ -121,6 +121,7 @@ Permanently deletes all completed tasks from a task list.
 | `GOOGLE_CLIENT_SECRET` | Yes | GCP OAuth 2.0 client secret |
 | `GOOGLE_REDIRECT_URI` | Yes | Must match GCP console — e.g. `https://zeno.tail1234.ts.net/callback` |
 | `ENCRYPTION_SECRET` | Yes | Min 32 chars, random. Used for AES-256-GCM token encryption |
+| `ALLOWED_GOOGLE_EMAILS` | Yes | Comma-separated Google accounts allowed to link this server. **Fails closed** — unset or empty permits nobody. Google authenticates any account, so this is the only thing restricting who can connect |
 | `PORT` | No | Default 3000 |
 | `LOG_LEVEL` | No | `debug` \| `info` \| `warn` \| `error`. Default `info` |
 
