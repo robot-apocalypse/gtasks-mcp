@@ -3,6 +3,7 @@ import { Hono, type Context } from 'hono'
 import { cors } from 'hono/cors'
 import { handleMcpRequest } from './mcp/transport.js'
 import { getAuthUrl, handleCallback } from './auth/oauth.js'
+import { isAllowedRedirectUri } from './auth/redirects.js'
 import { loadTokens } from './auth/storage.js'
 import {
   storePendingRequest,
@@ -70,12 +71,21 @@ app.get('/.well-known/oauth-protected-resource', protectedResourceMetadata)
 app.post('/register', async (c) => {
   const body = await c.req.json().catch(() => ({})) as Record<string, unknown>
   c.header('Cache-Control', 'no-store')
+  const redirectUris = Array.isArray(body.redirect_uris) ? (body.redirect_uris as unknown[]) : []
+  const rejected = redirectUris.filter((u) => typeof u !== 'string' || !isAllowedRedirectUri(u))
+  if (redirectUris.length === 0 || rejected.length > 0) {
+    console.warn(`/register rejected redirect_uris ${JSON.stringify(body.redirect_uris ?? null)}`)
+    return c.json(
+      { error: 'invalid_redirect_uri', error_description: 'redirect_uris must be allowlisted callback URLs' },
+      400
+    )
+  }
   return c.json(
     {
       client_id: crypto.randomUUID(),
       client_id_issued_at: Math.floor(Date.now() / 1000),
       client_secret_expires_at: 0,
-      redirect_uris: body.redirect_uris ?? [],
+      redirect_uris: redirectUris,
       token_endpoint_auth_method: 'none',
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code']
@@ -91,6 +101,11 @@ app.get('/authorize', (c) => {
 
   if (response_type !== 'code') return c.text('unsupported_response_type', 400)
   if (!redirect_uri || !code_challenge || !state) return c.text('invalid_request', 400)
+  // Only ever send a code to a known client callback; see auth/redirects.ts.
+  if (!isAllowedRedirectUri(redirect_uri)) {
+    console.warn(`/authorize rejected redirect_uri ${JSON.stringify(redirect_uri)}`)
+    return c.text('invalid_request: redirect_uri is not allowed', 400)
+  }
   if (code_challenge_method !== 'S256') return c.text('invalid_request: only S256 supported', 400)
 
   const nonce = storePendingRequest({
