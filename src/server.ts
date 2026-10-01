@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 import { Hono, type Context } from 'hono'
 import { cors } from 'hono/cors'
-import { authMode } from './authMode.js'
+import { authMode, upstreamTokenOk } from './authMode.js'
 import { handleMcpRequest } from './mcp/transport.js'
 import { getAuthUrl, handleCallback } from './auth/oauth.js'
 import { isAllowedRedirectUri } from './auth/redirects.js'
@@ -209,6 +209,7 @@ app.get('/health', (c) => c.json({ ok: true }))
 
 app.all('/mcp', async (c) => {
   if (authMode() === 'none') {
+    if (!upstreamTokenOk(c.req.header('authorization'))) return c.json({ error: 'unauthorized' }, 401)
     if (!(await loadTokens())) {
       return c.json({ error: 'Not authenticated with Google. Run the Google sign-in for this server first.' }, 503)
     }

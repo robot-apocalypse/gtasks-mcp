@@ -205,3 +205,8 @@ If a gateway such as [mcp-latchkey](https://github.com/robot-apocalypse/mcp-latc
 binds `127.0.0.1` by default (override with `HOST`), so make sure only the gateway can reach it.
 Only `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `ENCRYPTION_SECRET` are required, and
 `data/tokens.json` must already hold Google Tasks credentials (from a previous `/auth` sign-in).
+
+Set `UPSTREAM_TOKEN` (32+ random characters) to also require `Authorization: Bearer <UPSTREAM_TOKEN>`
+on `/mcp` in this mode, and configure the gateway to send it. Then other processes that can reach
+the port still can't use it.
+

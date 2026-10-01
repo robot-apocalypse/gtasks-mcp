@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 afterEach(() => {
   delete process.env.AUTH_MODE
+  delete process.env.UPSTREAM_TOKEN
   vi.resetModules()
   vi.doUnmock('./auth/storage.js')
 })
@@ -29,5 +30,15 @@ describe('AUTH_MODE=none', () => {
     const { default: app } = await import('./server.js')
     expect((await app.request('/.well-known/oauth-authorization-server')).status).toBe(200)
     expect((await app.request('/mcp', { method: 'POST' })).status).toBe(401)
+  })
+
+  it('requires UPSTREAM_TOKEN when it is set', async () => {
+    process.env.AUTH_MODE = 'none'
+    process.env.UPSTREAM_TOKEN = 'u'.repeat(40)
+    const { default: app } = await import('./server.js')
+    expect((await app.request('/mcp', { method: 'POST' })).status).toBe(401)
+    expect((await app.request('/mcp', { method: 'POST', headers: { authorization: 'Bearer wrong' } })).status).toBe(401)
+    const ok = await app.request('/mcp', { method: 'POST', headers: { authorization: `Bearer ${'u'.repeat(40)}` } })
+    expect(ok.status).not.toBe(401)
   })
 })
