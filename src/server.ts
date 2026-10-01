@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import { Hono, type Context } from 'hono'
 import { cors } from 'hono/cors'
+import { authMode } from './authMode.js'
 import { handleMcpRequest } from './mcp/transport.js'
 import { getAuthUrl, handleCallback } from './auth/oauth.js'
 import { isAllowedRedirectUri } from './auth/redirects.js'
@@ -26,6 +27,14 @@ app.use('*', async (c, next) => {
     console.log(`${c.req.method} ${c.req.path} → ${c.res.status}`)
   }
 })
+
+// Behind a gateway, none of the OAuth routes exist (see authMode.ts).
+if (authMode() === 'none') {
+  app.use('*', async (c, next) => {
+    if (c.req.path === '/health' || c.req.path === '/mcp') return next()
+    return c.json({ error: 'not_found' }, 404)
+  })
+}
 
 // CORS — required for browser-side OAuth requests from Claude.ai
 app.use('/.well-known/*', cors())
@@ -199,6 +208,13 @@ app.post('/token', async (c) => {
 app.get('/health', (c) => c.json({ ok: true }))
 
 app.all('/mcp', async (c) => {
+  if (authMode() === 'none') {
+    if (!(await loadTokens())) {
+      return c.json({ error: 'Not authenticated with Google. Run the Google sign-in for this server first.' }, 503)
+    }
+    return handleMcpRequest(c.req.raw)
+  }
+
   const authHeader = c.req.header('Authorization')
   if (!authHeader?.startsWith('Bearer ')) {
     const origin = getOrigin(c)

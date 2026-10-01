@@ -196,3 +196,12 @@ Google tokens are stored encrypted in `data/tokens.json` on a bind-mounted volum
 ## License
 
 MIT
+
+
+## Running behind a gateway (`AUTH_MODE=none`)
+
+If a gateway such as [mcp-latchkey](https://github.com/) already handles sign-in, set
+`AUTH_MODE=none`. The server then exposes only `/health` and `/mcp`, does no bearer check, and
+binds `127.0.0.1` by default (override with `HOST`), so make sure only the gateway can reach it.
+Only `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `ENCRYPTION_SECRET` are required, and
+`data/tokens.json` must already hold Google Tasks credentials (from a previous `/auth` sign-in).
