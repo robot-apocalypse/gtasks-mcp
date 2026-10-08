@@ -12,7 +12,9 @@ A remote MCP server that:
 
 ## Context
 
-Built by Ian Buffington. Primary use case: personal productivity, accessed from Claude.ai on desktop and mobile. Hosted on a home server (Zeno) exposed to the internet via Tailscale Funnel. The goal is a clean, well-documented open source project others can self-host.
+Built by Ian Buffington. Primary use case: personal productivity, accessed from Claude.ai on desktop and mobile. The goal is a clean, well-documented open source project others can self-host.
+
+Two ways to run it: **standalone** (its own OAuth, exposed via Tailscale Funnel — the setup documented below), or **behind an MCP gateway** such as [mcp-latchkey](https://github.com/robot-apocalypse/mcp-latchkey) with `AUTH_MODE=none` and a bearer upstream token, where the gateway handles Claude.ai sign-in. The author's own deployment uses the gateway mode; keep both working.
 
 ## Stack
 
